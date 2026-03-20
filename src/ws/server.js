@@ -17,32 +17,50 @@ function broadcast(wss, payload) {
 
 export function attachWebSocketServer(server) {
   const wss = new WebSocketServer({
-    server,
-    path: "/ws",
+    noServer: true,
     maxPayload: 1024 * 2024,
   });
 
-  wss.on("connection", async (socket) => {
-    if (wsArcjet) {
-      const decision = await wsArcjet.protect(req);
+  server.on("upgrade", async (req, socket, head) => {
+    if (req.url !== "/ws") return;
 
-      if (decision.isDenied()) {
-        const code = decision.reason.isRateLimit() ? 1013 : 1008;
-        const reason = decision.reason.isRateLimit()
-          ? "Rate limit exceeded"
-          : "Access denied";
+    try {
+      if (wsArcjet) {
+        const decision = await wsArcjet.protect(req);
 
-        socket.close(code, reason);
-        return;
+        if (decision.isDenied()) {
+          const statusCode = decision.reason.isRateLimit() ? 429 : 403;
+          const statusText =
+            statusCode === 429 ? "Too Many Requests" : "Forbidden";
+          const body = JSON.stringify({
+            error: statusCode === 429 ? "Rate limit exceeded" : "Access denied",
+          });
+
+          socket.write(
+            [
+              `HTTP/1.1 ${statusCode} ${statusText}`,
+              "Content-Type: application/json",
+              `Content-Length: ${Buffer.byteLength(body)}`,
+              "Connection: close",
+              "",
+              body,
+            ].join("\r\n")
+          );
+          socket.destroy();
+          return;
+        }
       }
-      try {
-      } catch (e) {
-        console.error("WS connection error", e);
-        socket.close(1011, "Serveur security error");
-        return;
-      }
+
+      wss.handleUpgrade(req, socket, head, (ws) => {
+        wss.emit("connection", ws, req);
+      });
+    } catch (e) {
+      console.error("WS upgrade security error", e);
+      socket.destroy();
     }
+  });
 
+  wss.on("connection", (socket) => {
     socket.isAlive = true;
     socket.on("pong", () => {
       socket.isAlive = true;
