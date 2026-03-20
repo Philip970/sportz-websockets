@@ -4,6 +4,7 @@ import swaggerUi from "swagger-ui-express";
 import { swaggerSpec } from "./docs/swagger.js";
 import http from "http";
 import { attachWebSocketServer } from "./ws/server.js";
+import { securityMiddleware } from "./arcjet.js";
 
 const app = express();
 const PORT = process.env.PORT || 8010;
@@ -17,6 +18,7 @@ app.get("/", (req, res) => {
   res.send("Server is running.");
 });
 
+app.use(securityMiddleware());
 app.use("/matches", matchRouter);
 app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
